@@ -13,4 +13,4 @@ npm run check
 docker build -t algaguard-ota-service:local .
 ```
 
-The development workflow uses ECDSA P-256/SHA-256 signatures over the firmware binary. Ed25519 verification is supported for objects up to 64 MiB because Node verification requires the complete message. This repository does not claim production signing, cloud deployment, physical OTA installation, MicroSD validation, or battery validation.
+The development workflow uses ECDSA P-256/SHA-256 signatures over the firmware binary. Verification accepts public key material through `OTA_SIGNING_PUBLIC_KEY_PEM` or a mounted public-key file through `OTA_SIGNING_PUBLIC_KEY_PATH`; a private signing key is never accepted. Ed25519 verification is supported for objects up to 64 MiB because Node verification requires the complete message. This repository does not claim production signing, cloud deployment, physical OTA installation, MicroSD validation, or battery validation.
