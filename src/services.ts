@@ -74,7 +74,26 @@ export function createDeviceProvider(
 ): DeviceProvider {
   const base = environment.DEVICE_SERVICE_URL ?? "http://device-service:3000";
   return async (deviceId, authorization, correlationId) => {
-    const response = await fetch(`${base}/v1/devices/${deviceId}`, {
+    const contextResponse = await fetch(
+      `${base}/v1/internal/devices/by-device-id/${deviceId}/context`,
+      {
+        headers: {
+          authorization: `Bearer ${await serviceToken(environment)}`,
+          "x-correlation-id": correlationId,
+        },
+      },
+    );
+    if (!contextResponse.ok)
+      throw new Error(
+        `Device context lookup failed with ${contextResponse.status}`,
+      );
+    const context = (await contextResponse.json()) as {
+      deviceUuid?: string;
+      deviceId?: string;
+    };
+    if (!context.deviceUuid || context.deviceId !== deviceId)
+      throw new Error("Device context identity is invalid");
+    const response = await fetch(`${base}/v1/devices/${context.deviceUuid}`, {
       headers: { authorization, "x-correlation-id": correlationId },
     });
     if (!response.ok)
