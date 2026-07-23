@@ -5,7 +5,11 @@ import express, {
 } from "express";
 import { trace } from "@opentelemetry/api";
 import pino from "pino";
-import { router } from "./routes.js";
+import { z } from "zod";
+import { HttpError, type Authenticator } from "./auth.js";
+import type { ObjectStorage, OtaRepository } from "./domain.js";
+import { createRouter } from "./routes.js";
+import type { DeviceProvider, OtaAuthorizer } from "./services.js";
 
 const logger = pino({ level: process.env.LOG_LEVEL ?? "info" });
 const requestContext: RequestHandler = (request, response, next) => {
@@ -13,6 +17,7 @@ const requestContext: RequestHandler = (request, response, next) => {
   const correlationId =
     supplied && supplied.length <= 128 ? supplied : randomUUID();
   response.setHeader("x-correlation-id", correlationId);
+  request.headers["x-correlation-id"] = correlationId;
   const span = trace
     .getTracer("algaguard-ota-service")
     .startSpan(`${request.method} ${request.path}`);
@@ -33,7 +38,13 @@ const requestContext: RequestHandler = (request, response, next) => {
   next();
 };
 
-export function buildApp() {
+export function buildApp(
+  repository: OtaRepository,
+  objectStorage: ObjectStorage,
+  authenticate?: Authenticator,
+  authorize?: OtaAuthorizer,
+  deviceProvider?: DeviceProvider,
+) {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "256kb" }));
@@ -41,14 +52,30 @@ export function buildApp() {
   app.get("/health/live", (_request, response) =>
     response.json({ status: "UP", service: "algaguard-ota-service" }),
   );
-  app.get("/health/ready", (_request, response) =>
-    response.json({
-      status: "READY",
-      service: "algaguard-ota-service",
-      dependencies: "configured",
+  app.get("/health/ready", async (_request, response) => {
+    try {
+      await Promise.all([repository.health(), objectStorage.health()]);
+      response.json({
+        status: "READY",
+        service: "algaguard-ota-service",
+        dependencies: { postgres: "UP", objectStorage: "UP" },
+      });
+    } catch {
+      response
+        .status(503)
+        .json({ status: "NOT_READY", service: "algaguard-ota-service" });
+    }
+  });
+  app.use(
+    "/v1",
+    createRouter({
+      repository,
+      objectStorage,
+      ...(authenticate ? { authenticate } : {}),
+      ...(authorize ? { authorize } : {}),
+      ...(deviceProvider ? { deviceProvider } : {}),
     }),
   );
-  app.use("/v1", router);
   app.use((_request, response) =>
     response
       .status(404)
@@ -57,11 +84,33 @@ export function buildApp() {
   );
   const errors: ErrorRequestHandler = (error, _request, response, _next) => {
     logger.error({ err: error }, "request failed");
-    response.status(500).type("application/problem+json").json({
-      type: "about:blank",
-      title: "Internal Server Error",
-      status: 500,
-    });
+    const status =
+      error instanceof HttpError
+        ? error.status
+        : error instanceof z.ZodError
+          ? 400
+          : 500;
+    response
+      .status(status)
+      .type("application/problem+json")
+      .json({
+        type: "about:blank",
+        title:
+          status === 400
+            ? "Bad Request"
+            : status === 401
+              ? "Unauthorized"
+              : status === 403
+                ? "Forbidden"
+                : status === 404
+                  ? "Not Found"
+                  : status === 409
+                    ? "Conflict"
+                    : status === 422
+                      ? "Unprocessable Content"
+                      : "Internal Server Error",
+        status,
+      });
   };
   app.use(errors);
   return app;
