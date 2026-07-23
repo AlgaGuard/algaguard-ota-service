@@ -7,7 +7,7 @@ import { trace } from "@opentelemetry/api";
 import pino from "pino";
 import { z } from "zod";
 import { HttpError, type Authenticator } from "./auth.js";
-import type { ObjectStorage, OtaRepository } from "./domain.js";
+import type { ObjectStorage, OtaNotifier, OtaRepository } from "./domain.js";
 import { createRouter } from "./routes.js";
 import type { DeviceProvider, OtaAuthorizer } from "./services.js";
 
@@ -44,6 +44,7 @@ export function buildApp(
   authenticate?: Authenticator,
   authorize?: OtaAuthorizer,
   deviceProvider?: DeviceProvider,
+  notifier?: OtaNotifier,
 ) {
   const app = express();
   app.disable("x-powered-by");
@@ -74,6 +75,7 @@ export function buildApp(
       ...(authenticate ? { authenticate } : {}),
       ...(authorize ? { authorize } : {}),
       ...(deviceProvider ? { deviceProvider } : {}),
+      ...(notifier ? { notifier } : {}),
     }),
   );
   app.use((_request, response) =>

@@ -5,6 +5,7 @@ import { createAuthenticator, HttpError, type Authenticator } from "./auth.js";
 import {
   eligible,
   type ObjectStorage,
+  type OtaNotifier,
   type OtaRepository,
   type Release,
 } from "./domain.js";
@@ -94,6 +95,7 @@ export interface RouteDependencies {
   authenticate?: Authenticator;
   authorize?: OtaAuthorizer;
   deviceProvider?: DeviceProvider;
+  notifier?: OtaNotifier;
 }
 function correlationId(request: Request) {
   return (
@@ -202,6 +204,22 @@ export function createRouter(dependencies: RouteDependencies) {
       devices,
       expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
     });
+    if (dependencies.notifier)
+      for (const assignment of rollout.assignments) {
+        const ttl = Math.min(
+          300,
+          Math.max(
+            1,
+            Math.floor((Date.parse(assignment.expiresAt) - Date.now()) / 1000),
+          ),
+        );
+        const downloadUrl =
+          await dependencies.objectStorage.temporaryDownloadUrl(
+            release.objectKey,
+            ttl,
+          );
+        await dependencies.notifier.publish(assignment, release, downloadUrl);
+      }
     response
       .status(201)
       .json({ rolloutId: rollout.rolloutId, status: rollout.status });

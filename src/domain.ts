@@ -80,6 +80,14 @@ export interface OtaRepository {
   health(): Promise<void>;
   close(): Promise<void>;
 }
+export interface OtaNotifier {
+  publish(
+    assignment: Assignment,
+    release: Release,
+    downloadUrl: string,
+  ): Promise<void>;
+  close(): Promise<void>;
+}
 
 function versionParts(version: string) {
   const match =
