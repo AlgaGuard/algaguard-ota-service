@@ -96,6 +96,8 @@ export interface RouteDependencies {
   authorize?: OtaAuthorizer;
   deviceProvider?: DeviceProvider;
   notifier?: OtaNotifier;
+  assignmentTtlSeconds?: number;
+  downloadUrlTtlSeconds?: number;
 }
 function correlationId(request: Request) {
   return (
@@ -113,6 +115,13 @@ function sameRelease(one: Release, two: z.infer<typeof releaseInput>) {
     one.sha256 === two.sha256 &&
     one.signature === two.signature &&
     one.signatureAlgorithm === two.signatureAlgorithm
+  );
+}
+
+function temporaryUrlTtl(expiresAt: string, maximumSeconds: number) {
+  return Math.min(
+    maximumSeconds,
+    Math.max(1, Math.floor((Date.parse(expiresAt) - Date.now()) / 1000)),
   );
 }
 
@@ -202,16 +211,15 @@ export function createRouter(dependencies: RouteDependencies) {
       ring: input.rolloutRing,
       createdBy: principal.subjectId,
       devices,
-      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+      expiresAt: new Date(
+        Date.now() + (dependencies.assignmentTtlSeconds ?? 15 * 60) * 1_000,
+      ).toISOString(),
     });
     if (dependencies.notifier)
       for (const assignment of rollout.assignments) {
-        const ttl = Math.min(
-          300,
-          Math.max(
-            1,
-            Math.floor((Date.parse(assignment.expiresAt) - Date.now()) / 1000),
-          ),
+        const ttl = temporaryUrlTtl(
+          assignment.expiresAt,
+          dependencies.downloadUrlTtlSeconds ?? 300,
         );
         const downloadUrl =
           await dependencies.objectStorage.temporaryDownloadUrl(
@@ -246,12 +254,9 @@ export function createRouter(dependencies: RouteDependencies) {
       assignment.releaseId,
     );
     if (!release) throw new HttpError(404, "Release not found");
-    const ttl = Math.min(
-      300,
-      Math.max(
-        1,
-        Math.floor((Date.parse(assignment.expiresAt) - Date.now()) / 1000),
-      ),
+    const ttl = temporaryUrlTtl(
+      assignment.expiresAt,
+      dependencies.downloadUrlTtlSeconds ?? 300,
     );
     const downloadUrl = await dependencies.objectStorage.temporaryDownloadUrl(
       release.objectKey,

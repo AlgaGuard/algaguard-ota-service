@@ -15,6 +15,11 @@ const server = buildApp(
   undefined,
   undefined,
   notifier,
+  {
+    bodyLimitBytes: config.HTTP_BODY_LIMIT_BYTES,
+    assignmentTtlSeconds: config.OTA_ASSIGNMENT_TTL_SECONDS,
+    downloadUrlTtlSeconds: config.OTA_DOWNLOAD_URL_TTL_SECONDS,
+  },
 ).listen(config.PORT, () => {
   process.stdout.write(
     `${JSON.stringify({ level: "info", service: "algaguard-ota-service", message: "listening", port: config.PORT })}\n`,

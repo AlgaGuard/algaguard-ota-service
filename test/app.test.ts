@@ -35,7 +35,19 @@ function fixture() {
   return {
     repository,
     storage,
-    app: buildApp(repository, storage, authenticate, authorize, deviceProvider),
+    app: buildApp(
+      repository,
+      storage,
+      authenticate,
+      authorize,
+      deviceProvider,
+      undefined,
+      {
+        bodyLimitBytes: 256 * 1_024,
+        assignmentTtlSeconds: 60,
+        downloadUrlTtlSeconds: 30,
+      },
+    ),
   };
 }
 const release = {
@@ -133,5 +145,6 @@ test("authorized eligible rollout creates a short-lived assignment", async () =>
     .set("authorization", "Bearer device");
   assert.equal(assignment.status, 200);
   assert.match(assignment.body.downloadUrl, /^https:\/\//);
-  assert.ok(assignment.body.expiresInSeconds <= 300);
+  assert.equal(assignment.body.expiresInSeconds, 30);
+  assert.match(assignment.body.downloadUrl, /expires=30$/);
 });

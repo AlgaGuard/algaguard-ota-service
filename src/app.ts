@@ -11,6 +11,12 @@ import type { ObjectStorage, OtaNotifier, OtaRepository } from "./domain.js";
 import { createRouter } from "./routes.js";
 import type { DeviceProvider, OtaAuthorizer } from "./services.js";
 
+interface OtaRuntimeLimits {
+  bodyLimitBytes: number;
+  assignmentTtlSeconds: number;
+  downloadUrlTtlSeconds: number;
+}
+
 const logger = pino({ level: process.env.LOG_LEVEL ?? "info" });
 const requestContext: RequestHandler = (request, response, next) => {
   const supplied = request.header("x-correlation-id");
@@ -45,10 +51,11 @@ export function buildApp(
   authorize?: OtaAuthorizer,
   deviceProvider?: DeviceProvider,
   notifier?: OtaNotifier,
+  limits?: OtaRuntimeLimits,
 ) {
   const app = express();
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "256kb" }));
+  app.use(express.json({ limit: limits?.bodyLimitBytes ?? 256 * 1_024 }));
   app.use(requestContext);
   app.get("/health/live", (_request, response) =>
     response.json({ status: "UP", service: "algaguard-ota-service" }),
@@ -76,6 +83,12 @@ export function buildApp(
       ...(authorize ? { authorize } : {}),
       ...(deviceProvider ? { deviceProvider } : {}),
       ...(notifier ? { notifier } : {}),
+      ...(limits
+        ? {
+            assignmentTtlSeconds: limits.assignmentTtlSeconds,
+            downloadUrlTtlSeconds: limits.downloadUrlTtlSeconds,
+          }
+        : {}),
     }),
   );
   app.use((_request, response) =>
