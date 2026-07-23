@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { Client } from "minio";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { MinioObjectStorage } from "../src/storage.js";
 
 const endpoint = process.env.TEST_MINIO_ENDPOINT;
@@ -31,14 +34,18 @@ test(
       namedCurve: "prime256v1",
     });
     const signature = sign("sha256", artifact, privateKey).toString("base64");
+    const keyDirectory = mkdtempSync(path.join(tmpdir(), "algaguard-ota-key-"));
+    const publicKeyPath = path.join(keyDirectory, "signing-public.pem");
+    writeFileSync(
+      publicKeyPath,
+      publicKey.export({ type: "spki", format: "pem" }),
+    );
     const storage = new MinioObjectStorage({
       MINIO_ENDPOINT: endpoint,
       MINIO_BUCKET: bucket,
       MINIO_ACCESS_KEY: accessKey,
       MINIO_SECRET_KEY: secretKey,
-      OTA_SIGNING_PUBLIC_KEY_PEM: publicKey
-        .export({ type: "spki", format: "pem" })
-        .toString(),
+      OTA_SIGNING_PUBLIC_KEY_PATH: publicKeyPath,
     });
     const release = {
       releaseId: "10000000-0000-4000-8000-000000000001",
@@ -59,5 +66,6 @@ test(
     assert.equal(new URL(downloadUrl).pathname.includes(objectKey), true);
     await client.removeObject(bucket, objectKey);
     await client.removeBucket(bucket);
+    rmSync(keyDirectory, { recursive: true, force: true });
   },
 );

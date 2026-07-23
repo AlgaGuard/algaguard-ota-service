@@ -3,6 +3,7 @@ import {
   createVerify,
   verify as verifySignature,
 } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { Client } from "minio";
 import type { ObjectStorage, Release } from "./domain.js";
 
@@ -16,10 +17,14 @@ export class MinioObjectStorage implements ObjectStorage {
     const url = new URL(endpoint);
     const accessKey = environment.MINIO_ACCESS_KEY;
     const secretKey = environment.MINIO_SECRET_KEY;
-    const publicKey = environment.OTA_SIGNING_PUBLIC_KEY_PEM;
+    const publicKey =
+      environment.OTA_SIGNING_PUBLIC_KEY_PEM ??
+      (environment.OTA_SIGNING_PUBLIC_KEY_PATH
+        ? readFileSync(environment.OTA_SIGNING_PUBLIC_KEY_PATH, "utf8")
+        : undefined);
     if (!accessKey || !secretKey || !publicKey)
       throw new Error(
-        "MINIO credentials and OTA_SIGNING_PUBLIC_KEY_PEM are required",
+        "MINIO credentials and an OTA signing public key are required",
       );
     this.bucket = environment.MINIO_BUCKET ?? "algaguard-ota-development";
     this.publicKey = publicKey.replace(/\\n/g, "\n");
