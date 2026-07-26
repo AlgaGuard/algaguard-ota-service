@@ -4,6 +4,11 @@ import { loadConfig } from "../src/config.js";
 
 const valid = {
   DATABASE_URL: "postgresql://localhost/algaguard",
+  KEYCLOAK_ISSUER: "https://dev.algaguard.example/auth/realms/algaguard",
+  KEYCLOAK_JWKS_URL:
+    "http://keycloak:8080/realms/algaguard/protocol/openid-connect/certs",
+  KEYCLOAK_TOKEN_URL:
+    "http://keycloak:8080/realms/algaguard/protocol/openid-connect/token",
   MQTT_URL: "mqtts://broker:8884",
   MQTT_CA_PATH: "/run/pki/ca.crt",
   MQTT_CERTIFICATE_PATH: "/run/pki/ota.crt",
@@ -19,6 +24,10 @@ test("OTA notification transport requires TLS and bounded settings", () => {
   assert.equal(config.OTA_ASSIGNMENT_TTL_SECONDS, 15 * 60);
   assert.equal(config.OTA_DOWNLOAD_URL_TTL_SECONDS, 5 * 60);
   assert.throws(() => loadConfig({ ...valid, MQTT_URL: "mqtt://broker:1883" }));
+  assert.throws(() => {
+    const { KEYCLOAK_TOKEN_URL: _, ...withoutTokenUrl } = valid;
+    loadConfig(withoutTokenUrl);
+  });
   assert.throws(() => loadConfig({ ...valid, MQTT_RECONNECT_DELAY_MS: "0" }));
   assert.throws(() =>
     loadConfig({

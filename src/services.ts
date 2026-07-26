@@ -17,11 +17,11 @@ export type DeviceProvider = (
 let token: { value: string; expiresAt: number } | undefined;
 async function serviceToken(environment: NodeJS.ProcessEnv) {
   if (token && token.expiresAt > Date.now() + 10_000) return token.value;
-  const issuer =
-    environment.KEYCLOAK_ISSUER ?? "http://keycloak:8080/realms/algaguard";
+  const tokenUrl = environment.KEYCLOAK_TOKEN_URL;
+  if (!tokenUrl) throw new Error("KEYCLOAK_TOKEN_URL is required");
   if (!environment.SERVICE_CLIENT_SECRET)
     throw new Error("SERVICE_CLIENT_SECRET is required");
-  const response = await fetch(`${issuer}/protocol/openid-connect/token`, {
+  const response = await fetch(tokenUrl, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({

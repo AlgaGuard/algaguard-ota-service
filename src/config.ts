@@ -7,6 +7,10 @@ const environmentSchema = z
       .default("development"),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     DATABASE_URL: z.string().min(1),
+    KEYCLOAK_ISSUER: z.string().url(),
+    KEYCLOAK_JWKS_URL: z.string().url(),
+    KEYCLOAK_TOKEN_URL: z.string().url(),
+    KEYCLOAK_AUDIENCE: z.string().min(1).default("algaguard-api"),
     MQTT_URL: z.string().url().startsWith("mqtts://"),
     MQTT_CLIENT_ID: z
       .literal("algaguard-ota-service")
