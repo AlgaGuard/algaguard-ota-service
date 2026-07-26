@@ -29,13 +29,27 @@ test("OTA device lookup resolves canonical UUID before authorized device read", 
   };
   try {
     const result = await createDeviceProvider({
-      KEYCLOAK_ISSUER: "http://keycloak/realms/algaguard",
+      KEYCLOAK_ISSUER: "https://dev.algaguard.example/auth/realms/algaguard",
+      KEYCLOAK_TOKEN_URL:
+        "http://keycloak:8080/realms/algaguard/protocol/openid-connect/token",
       SERVICE_CLIENT_ID: "algaguard-ota-service",
       SERVICE_CLIENT_SECRET: "test-secret",
       DEVICE_SERVICE_URL: "http://device-service:3000",
     })("AG-000001", "Bearer human-token", crypto.randomUUID());
     assert.equal(result.deviceId, "AG-000001");
     assert.equal(calls.length, 3);
+    assert.equal(
+      calls[0]!.url,
+      "http://keycloak:8080/realms/algaguard/protocol/openid-connect/token",
+    );
+    assert.ok(
+      calls.every(
+        (call) =>
+          !call.url.startsWith(
+            "https://dev.algaguard.example/auth/realms/algaguard",
+          ),
+      ),
+    );
     assert.match(calls[1]!.url, /by-device-id\/AG-000001\/context$/);
     assert.equal(calls[1]!.authorization, "Bearer service-token");
     assert.match(
