@@ -10,11 +10,16 @@ import {
   type Release,
 } from "./domain.js";
 import {
-  createDeviceProvider,
-  createOtaAuthorizer,
+  createGrpcDeviceProvider,
+  createGrpcOtaAuthorizer,
   type DeviceProvider,
   type OtaAuthorizer,
 } from "./services.js";
+
+const accessServiceGrpcAddress =
+  process.env.ACCESS_SERVICE_GRPC_ADDRESS ?? "access-service:50051";
+const deviceServiceGrpcAddress =
+  process.env.DEVICE_SERVICE_GRPC_ADDRESS ?? "device-service:50051";
 
 const releaseInput = z
   .object({
@@ -128,8 +133,11 @@ function temporaryUrlTtl(expiresAt: string, maximumSeconds: number) {
 export function createRouter(dependencies: RouteDependencies) {
   const router = Router();
   const authenticate = dependencies.authenticate ?? createAuthenticator();
-  const authorize = dependencies.authorize ?? createOtaAuthorizer();
-  const deviceProvider = dependencies.deviceProvider ?? createDeviceProvider();
+  const authorize =
+    dependencies.authorize ?? createGrpcOtaAuthorizer(accessServiceGrpcAddress);
+  const deviceProvider =
+    dependencies.deviceProvider ??
+    createGrpcDeviceProvider(deviceServiceGrpcAddress);
 
   router.post("/firmware/releases", async (request, response) => {
     const principal = await authenticate(request.header("authorization"));

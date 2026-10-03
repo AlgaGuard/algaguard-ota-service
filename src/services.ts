@@ -1,3 +1,26 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import * as grpc from "@grpc/grpc-js";
+import * as protoLoader from "@grpc/proto-loader";
+import {
+  createServiceTokenProvider,
+  metadataWithServiceToken,
+} from "./grpc-client.js";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+function loadProto(file: string) {
+  const protoPath = path.resolve(here, "..", "proto", file);
+  const packageDefinition = protoLoader.loadSync(protoPath, {
+    keepCase: false,
+    longs: String,
+    enums: Number,
+    defaults: true,
+    oneofs: true,
+    includeDirs: [path.dirname(protoPath)],
+  });
+  return grpc.loadPackageDefinition(packageDefinition) as any;
+}
+
 export type OtaAuthorizer = (
   subjectId: string,
   action: "ota.manage" | "ota.read",
@@ -102,6 +125,89 @@ export function createDeviceProvider(
       deviceId: string;
       hardwareModel: string;
       firmwareVersion: string;
+    };
+  };
+}
+
+export function createGrpcOtaAuthorizer(
+  address: string,
+  environment: NodeJS.ProcessEnv = process.env,
+  serviceToken = createServiceTokenProvider(environment),
+): OtaAuthorizer {
+  const proto = loadProto("access_service.proto");
+  const client = new proto.algaguard.access.v1.AuthorizationService(
+    address,
+    grpc.credentials.createInsecure(),
+  );
+  return async (subjectId, action, deviceId, correlationId) => {
+    const metadata = await metadataWithServiceToken(serviceToken, {
+      "x-correlation-id": correlationId,
+    });
+    const response = await new Promise<any>((resolve, reject) => {
+      client.decide(
+        {
+          subjectId,
+          action,
+          resourceType: 2, // device
+          resourceId: deviceId,
+        },
+        metadata,
+        (error: grpc.ServiceError, value: unknown) =>
+          error ? reject(error) : resolve(value),
+      );
+    });
+    return {
+      allowed: response.allowed === true,
+      ...(response.resolvedOrganizationId
+        ? { organizationId: response.resolvedOrganizationId }
+        : {}),
+    };
+  };
+}
+
+export function createGrpcDeviceProvider(
+  address: string,
+  environment: NodeJS.ProcessEnv = process.env,
+  serviceToken = createServiceTokenProvider(environment),
+): DeviceProvider {
+  const proto = loadProto("device_service.proto");
+  const client = new proto.algaguard.device.v1.DeviceLookupService(
+    address,
+    grpc.credentials.createInsecure(),
+  );
+  return async (deviceId, authorization, correlationId) => {
+    const contextMetadata = await metadataWithServiceToken(serviceToken, {
+      "x-correlation-id": correlationId,
+    });
+    const context = await new Promise<any>((resolve, reject) => {
+      client.getContextByDeviceId(
+        { deviceId },
+        contextMetadata,
+        (error: grpc.ServiceError, value: unknown) =>
+          error ? reject(error) : resolve(value),
+      );
+    });
+    if (!context.deviceUuid || context.deviceId !== deviceId)
+      throw new Error("Device context identity is invalid");
+    // GetDevice, unlike GetContextByDeviceId, authorizes the ORIGINAL
+    // caller's own device.read permission (matching the HTTP route this
+    // replaces), so it gets the caller's own bearer token, not a service
+    // token.
+    const deviceMetadata = new grpc.Metadata();
+    deviceMetadata.set("authorization", authorization);
+    deviceMetadata.set("x-correlation-id", correlationId);
+    const device = await new Promise<any>((resolve, reject) => {
+      client.getDevice(
+        { deviceUuid: context.deviceUuid },
+        deviceMetadata,
+        (error: grpc.ServiceError, value: unknown) =>
+          error ? reject(error) : resolve(value),
+      );
+    });
+    return {
+      deviceId: device.deviceId,
+      hardwareModel: device.hardwareModel,
+      firmwareVersion: device.firmwareVersion,
     };
   };
 }
