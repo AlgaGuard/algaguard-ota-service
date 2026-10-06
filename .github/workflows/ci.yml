@@ -38,10 +38,12 @@ jobs:
       - run: npm ci
       - name: Start MinIO and wait for readiness
         run: |
-          docker run -d --name minio-ci -p 9000:9000 \
+          # minio/minio no longer pulls from Docker Hub; this is the same
+          # MinIO server, matching algaguard-infrastructure's compose.yaml.
+          docker run -d --name minio-ci -p 9000:9000 --user 0:0 \
             -e MINIO_ROOT_USER=algaguard-test \
             -e MINIO_ROOT_PASSWORD=integration-only-secret \
-            minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
+            cgr.dev/chainguard/minio:latest-dev@sha256:9b52181d700f66d745ef3f337888e3e17d71780c459b9d3ff17e73432bb6b662 server /data
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://localhost:9000/minio/health/ready; then exit 0; fi
             sleep 1
